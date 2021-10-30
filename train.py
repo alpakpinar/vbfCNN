@@ -76,6 +76,7 @@ class NeuralNet():
     def build_model(self):
         self.model = Sequential([
             Conv2D(self.num_filters, self.filter_size, input_shape=self.input_shape),
+            MaxPooling2D(pool_size=self.pool_size),
             Conv2D(self.num_filters, self.filter_size),
             MaxPooling2D(pool_size=self.pool_size),
             Flatten(),
@@ -114,10 +115,10 @@ def plot_accuracy(history, outdir):
     ax.plot(validation_acc, label='Validation')
     
     ax.set_xlabel('Epoch #')
-    ax.set_ylabel('Training Accuracy')
+    ax.set_ylabel('Accuracy')
     ax.legend()
 
-    outpath = pjoin(outdir, 'training_acc.pdf')
+    outpath = pjoin(outdir, 'accuracy.pdf')
     fig.savefig(outpath)
     plt.close(fig)
 
@@ -156,7 +157,7 @@ def main():
     history = nn.train(
         X_train, Y_train, 
         X_test, Y_test,
-        epochs=10
+        epochs=50
     )
 
     plot_accuracy(history, outdir)

@@ -1,3 +1,6 @@
 coffea
 uproot>4.0
 numpy<1.21
+sklearn
+tensorflow
+keras
