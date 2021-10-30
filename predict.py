@@ -17,7 +17,7 @@ pjoin = os.path.join
 
 def load_test_data():
     '''Load data to test the predictions made by CNN.'''
-    infile = 'scripts/output/2021-10-29_vbfhinv_26Oct21_nanov8/merged.root'
+    infile = 'scripts/output/2021-10-29_vbfhinv_26Oct21_nanov8/merged_2017.root'
     reader = DataReader(infile, treename='Events')
     imarr, labelarr = reader.read_images_and_labels()
     _, X_test, _, Y_test = train_test_split(

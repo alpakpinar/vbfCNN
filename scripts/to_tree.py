@@ -13,6 +13,9 @@ from tqdm import tqdm
 
 pjoin = os.path.join
 
+def is_qcd_v(datasetname):
+    return re.match('(Z\dJetsToNuNu|WJetsToLNu).*Pt.*FXFX.*', datasetname)
+
 class DatasetLabeler():
     def __init__(self) -> None:
         pass
@@ -25,7 +28,7 @@ class DatasetLabeler():
         elif re.match('EWK.*', datasetname):
             return np.ones(numevents)
         # QCD V+jets
-        elif re.match('(Z\dJetsToNuNu|WJetsToLNu).*Pt.*FXFX.*', datasetname):
+        elif is_qcd_v(datasetname):
             return 2 * np.ones(numevents)
         
         raise RuntimeError(f'Cannot get a label for dataset: {datasetname}')
@@ -52,7 +55,22 @@ def main():
 
         # Label the dataset according to it's dataset name
         numevents = len(data[list(inputs)[0]])
+
+        # Prescale: Randomly, take every 100th entry for QCD V+jets
+        if is_qcd_v(dataset):
+            prescale = 100
+            np.random.seed(0)
+            numevents_after_scale = int(np.floor(numevents / prescale))
+            choices = np.random.choice(numevents, numevents_after_scale, replace=False)
+        # Otherwise, we take all
+        else:
+            choices = np.ones(numevents, dtype=bool)
+        
         labels = labeler.get_labels(dataset, numevents)
+        labels = labels[choices]
+
+        if len(labels) == 0:
+            continue
 
         outdir = f'./output/{outtag}'
         if not os.path.exists(outdir):
@@ -64,9 +82,9 @@ def main():
             tree_data = {}
             for pixelname in inputs:
                 if 'nBins' in pixelname:
-                    tree_data[pixelname] = np.stack(data[pixelname]).astype(np.uint16) 
+                    tree_data[pixelname] = np.stack(data[pixelname][choices]).astype(np.uint16) 
                 else:
-                    tree_data[pixelname] = np.stack(data[pixelname])
+                    tree_data[pixelname] = np.stack(np.array(data[pixelname])[choices])
             
             tree_data['DatasetLabel'] = labels
             f['Events'] = tree_data
