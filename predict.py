@@ -49,8 +49,10 @@ def main():
     # Input h5 file where the weights are stored
     infile = sys.argv[1]
     
-    outtag = os.path.basename(os.path.dirname(infile))
-    outdir = f'./output/{outtag}'
+    dirname = os.path.dirname(infile)
+    temp = dirname.split('/')
+    versiontag, outtag = temp[-1], temp[-2]
+    outdir = f'./output/{outtag}/{versiontag}'
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 

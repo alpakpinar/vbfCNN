@@ -2,20 +2,57 @@
 
 import os
 import sys
+import re
 import uproot
+import argparse
 import numpy as np
 
 from matplotlib import pyplot as plt
 from pprint import pprint
+from datetime import datetime
+from contextlib import redirect_stdout
 
 from sklearn.model_selection import train_test_split
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten, Dropout
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.regularizers import l2
 
 pjoin = os.path.join
 
+def parse_cli():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('infile', help='Path to the merged input ROOT file.')
+    parser.add_argument('--numepochs', type=int, default=50, help='Number of epochs to train, default is 50.')
+    parser.add_argument('--testsize', type=float, default=0.33, help='Fraction of test dataset, default is 33%.')
+    parser.add_argument('--learningrate', type=float, default=1e-3, help='The learning rate for Adam optimizer.')
+    args = parser.parse_args()
+    return args
+
+def print_version(args, model, outdir):
+    '''Saves a file with version + command line argument information about this run.'''
+    timestamp = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+    filename = 'version.txt'
+
+    filepath = pjoin(outdir, filename)
+    print(f'Saving version information to: {filepath}')
+
+    def print_arch_to_file(arch):
+        with open(filepath, 'w') as f:
+            print(arch, file=f)
+
+    with open(filepath, 'w+') as f:
+        for arg in vars(args):
+            f.write(f'{arg}: {getattr(args, arg)}\n')
+        
+        # Also print model summary so we see the arch for each run
+        f.write('\n')
+
+        with redirect_stdout(f):
+            model.summary()
+    
 class DataReader():
     def __init__(self, infile, treename='Events') -> None:
         '''
@@ -74,19 +111,29 @@ class NeuralNet():
         self.input_shape = input_shape
 
     def build_model(self):
+        dropout_rate = 0.4
         self.model = Sequential([
             Conv2D(self.num_filters, self.filter_size, input_shape=self.input_shape),
             MaxPooling2D(pool_size=self.pool_size),
             Conv2D(self.num_filters, self.filter_size),
             MaxPooling2D(pool_size=self.pool_size),
             Flatten(),
+            Dense(128, activation='relu'),
+            Dropout(dropout_rate),
+            Dense(128, activation='relu'),
+            Dropout(dropout_rate),
             Dense(64, activation='relu'),
+            Dropout(dropout_rate),
+            Dense(64, activation='relu'),
+            Dropout(dropout_rate),
+            Dense(32, activation='relu'),
+            Dropout(dropout_rate),
             Dense(3, activation='softmax') # 0: VBF H(inv), 1: EWK V+jets, 2: QCD V+jets
         ])
     
-    def compile(self):
+    def compile(self, learning_rate):
         self.model.compile(
-            'adam',
+            optimizer=Adam(learning_rate=learning_rate),
             loss='categorical_crossentropy',
             metrics=['accuracy'],
         )
@@ -111,24 +158,54 @@ def plot_accuracy(history, outdir):
     fig, ax = plt.subplots()
     training_acc = history.history['accuracy']
     validation_acc = history.history['val_accuracy']
-    ax.plot(training_acc, label='Training')
-    ax.plot(validation_acc, label='Validation')
+    ax.plot(training_acc, label=f'Training, final acc: {training_acc[-1]*100:.2f}%')
+    ax.plot(validation_acc, label=f'Validation, final acc: {validation_acc[-1]*100:.2f}%')
     
     ax.set_xlabel('Epoch #')
     ax.set_ylabel('Accuracy')
     ax.legend()
 
+    ax.axhline(1, xmin=0, xmax=1, ls='--', color='k')
+    ax.set_ylim(0,1.1)
+
     outpath = pjoin(outdir, 'accuracy.pdf')
     fig.savefig(outpath)
     plt.close(fig)
 
+def plot_loss(history, outdir):
+    '''Plot training and validation accuracies as a function of number of epochs.'''
+    fig, ax = plt.subplots()
+    training_loss = history.history['loss']
+    validation_loss = history.history['val_loss']
+    ax.plot(training_loss, label=f'Training')
+    ax.plot(validation_loss, label=f'Validation')
+    
+    ax.set_xlabel('Epoch #')
+    ax.set_ylabel('Cross-entropy Loss')
+    ax.legend()
+
+    outpath = pjoin(outdir, 'loss.pdf')
+    fig.savefig(outpath)
+    plt.close(fig)
+
 def main():
+    args = parse_cli()
     # Path to the merged (via hadd) ROOT file
-    infile = sys.argv[1]
+    infile = args.infile
 
     tag = os.path.basename(os.path.dirname(infile))
     # Directory to save output
     outdir = f'./output/{tag}'
+    # For each run, we'll assign a version tag with detailed info inside the directory
+    versiontag = 'v1'
+    dirs = [d for d in os.listdir(outdir) if re.match('v\d+', d)]
+    if len(dirs) > 0:
+        sorted_dirs = sorted(dirs, key=lambda x: int(re.findall('\d+', x)[0]))
+        latest_version = int(re.findall('\d+', sorted_dirs[-1])[0])
+        versiontag = f'v{latest_version+1}'
+
+    outdir = pjoin(outdir, versiontag)
+
     if not os.path.exists(outdir):
         os.makedirs(outdir)
 
@@ -140,7 +217,7 @@ def main():
     X_train, X_test, Y_train, Y_test = train_test_split(
             imarr, 
             labelarr, 
-            test_size=0.33, 
+            test_size=args.testsize, 
             random_state=42
             )
 
@@ -152,15 +229,19 @@ def main():
     )
     
     nn.build_model()
-    nn.compile()
+    nn.compile(learning_rate=args.learningrate)
+
+    # Save version information
+    print_version(args, nn.model, outdir)
 
     history = nn.train(
         X_train, Y_train, 
         X_test, Y_test,
-        epochs=50
+        epochs=args.numepochs
     )
 
     plot_accuracy(history, outdir)
+    plot_loss(history, outdir)
 
     # Output file to save weights
     outfile = pjoin(outdir, 'weights.h5')
