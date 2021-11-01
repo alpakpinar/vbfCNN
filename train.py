@@ -101,12 +101,13 @@ class DataReader():
         return imarr, labelarr
 
 class NeuralNet():
-    def __init__(self, num_filters, filter_size, pool_size, input_shape=(40,20,1)) -> None:
+    def __init__(self, num_filters, filter_size, pool_size, num_classes=3, input_shape=(40,20,1)) -> None:
         '''Wrapper class for Keras Neural Network implementation.'''
         # Set some hyperparameters for our CNN
         self.num_filters = num_filters
         self.filter_size = filter_size
         self.pool_size = pool_size
+        self.num_classes = num_classes
         
         self.input_shape = input_shape
 
@@ -118,17 +119,17 @@ class NeuralNet():
             Conv2D(self.num_filters, self.filter_size),
             MaxPooling2D(pool_size=self.pool_size),
             Flatten(),
-            Dense(128, activation='relu'),
+            Dense(128, activation='relu', kernel_regularizer=l2(1e-4)),
             Dropout(dropout_rate),
-            Dense(128, activation='relu'),
+            Dense(128, activation='relu', kernel_regularizer=l2(1e-4)),
             Dropout(dropout_rate),
-            Dense(64, activation='relu'),
+            Dense(64, activation='relu', kernel_regularizer=l2(1e-4)),
             Dropout(dropout_rate),
-            Dense(64, activation='relu'),
+            Dense(64, activation='relu', kernel_regularizer=l2(1e-4)),
             Dropout(dropout_rate),
-            Dense(32, activation='relu'),
+            Dense(32, activation='relu', kernel_regularizer=l2(1e-4)),
             Dropout(dropout_rate),
-            Dense(3, activation='softmax') # 0: VBF H(inv), 1: EWK V+jets, 2: QCD V+jets
+            Dense(self.num_classes, activation='softmax') # 0: VBF H(inv), 1: EWK V+jets, 2: QCD V+jets
         ])
     
     def compile(self, learning_rate=1e-3):
@@ -221,11 +222,15 @@ def main():
             random_state=42
             )
 
+    # Get the number of classes for this training
+    num_classes = to_categorical(Y_test).shape[-1]
+
     # Construct the neural net and train
     nn = NeuralNet(
         num_filters=8,
         filter_size=3,
-        pool_size=2
+        pool_size=2,
+        num_classes=num_classes,
     )
     
     nn.build_model()
