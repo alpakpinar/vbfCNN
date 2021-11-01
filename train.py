@@ -131,7 +131,7 @@ class NeuralNet():
             Dense(3, activation='softmax') # 0: VBF H(inv), 1: EWK V+jets, 2: QCD V+jets
         ])
     
-    def compile(self, learning_rate):
+    def compile(self, learning_rate=1e-3):
         self.model.compile(
             optimizer=Adam(learning_rate=learning_rate),
             loss='categorical_crossentropy',
